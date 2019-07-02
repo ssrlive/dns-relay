@@ -8,6 +8,7 @@ unique_ptr<DnsServer> server;
 void signalHandler(int sig);
 int main() {
 	server = unique_ptr<DnsServer>{ new DnsServer("127.0.0.1",1053) };
+	server->setUpstream("1.1.1.1");
 	server->start();
 	signal(SIGINT, signalHandler);
 	signal(SIGTERM, signalHandler);

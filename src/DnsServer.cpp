@@ -58,3 +58,7 @@ const char* DnsServer::queryDns(char* rawData, size_t length)
 	//process query here
 	return nullptr;
 }
+
+void DnsServer::setUpstream(std::string upstreamDns){
+	upstream = upstreamDns;
+}
