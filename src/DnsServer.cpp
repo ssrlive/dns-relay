@@ -55,10 +55,28 @@ DnsServer::~DnsServer()
 
 const char* DnsServer::queryDns(char* rawData, size_t length)
 {
-	//process query here
+	auto hostName = getHostName(rawData, length);
 	return nullptr;
 }
 
 void DnsServer::setUpstream(std::string upstreamDns){
 	upstream = upstreamDns;
+}
+
+std::string DnsServer::getHostName(const char* raw, size_t length) {
+	auto buf = new char[BUFFERSIZE];
+	std::string hostName;
+	memset(buf, 0, sizeof(buf));
+	memcpy(buf, &(raw[sizeof(DNSHeader)]), length - 16);
+	for (int i = 0; i < length - 16; i++) {
+		if (buf[i] > 0 && buf[i] <= 63) {
+			hostName += '.';
+			for (int j = buf[i]; j > 0; j--) {//byte count
+				hostName += buf[++i];
+			}
+		}
+		else
+			break;
+	}
+	return hostName;
 }
