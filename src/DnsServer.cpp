@@ -19,18 +19,23 @@ void DnsServer::start(){
 #endif
 		request[event.length] = '\0';
 
-		std::string reply = queryDns(request, event.length + 1);//process query
-
-		//copy reply to buffer
-		auto toSend = new char[reply.size()];
-#ifdef _MSC_VER
-		memcpy_s(toSend, reply.size(), reply.c_str(), reply.size());
-#else
-		memcpy(toSend, response.c_str(), response.size());
-#endif
-		server->trySend(event.sender, toSend, reply.length());
+		auto result = queryDns(request, event.length + 1);//process query
 		delete[] request;
-		delete[] toSend;
+		if (result.first == false) {
+			return;
+		}
+		else {
+			std::string reply = result.second;
+			//copy reply to buffer
+			auto toSend = new char[reply.size()];
+#ifdef _MSC_VER
+			memcpy_s(toSend, reply.size(), reply.c_str(), reply.size());
+#else
+			memcpy(toSend, response.c_str(), response.size());
+#endif
+			server->trySend(event.sender, toSend, reply.length());
+			delete[] toSend;
+		}
 		});
 	server->on<uvw::ErrorEvent>([](const auto& event, auto&) {
 		cout << "Error occurred:" << event.what() << endl;
@@ -53,10 +58,19 @@ DnsServer::~DnsServer()
 	loop->close();
 }
 
-const char* DnsServer::queryDns(char* rawData, size_t length)
+std::pair<bool,const char*> DnsServer::queryDns(char* rawData, size_t length)
 {
 	auto hostName = getHostName(rawData, length);
-	return nullptr;
+	auto upStreamRequest = loop->resource<uvw::GetAddrInfoReq>();
+	auto result = upStreamRequest->nodeAddrInfoSync(hostName);
+	if (result.first) {
+		auto ip = result.second.get();
+		cout << ip->ai_flags;
+		cout << ip->ai_canonname;
+		return std::pair(true, ip->ai_canonname);
+	}
+	else
+		return std::pair(false, nullptr);
 }
 
 void DnsServer::setUpstream(std::string upstreamDns){
@@ -66,17 +80,18 @@ void DnsServer::setUpstream(std::string upstreamDns){
 std::string DnsServer::getHostName(const char* raw, size_t length) {
 	auto buf = new char[BUFFERSIZE];
 	std::string hostName;
-	memset(buf, 0, sizeof(buf));
+	memset(buf, 0, BUFFERSIZE);
 	memcpy(buf, &(raw[sizeof(DNSHeader)]), length - 16);
 	for (int i = 0; i < length - 16; i++) {
 		if (buf[i] > 0 && buf[i] <= 63) {
-			hostName += '.';
 			for (int j = buf[i]; j > 0; j--) {//byte count
 				hostName += buf[++i];
 			}
+			hostName += '.';
 		}
 		else
 			break;
 	}
+	delete[] buf;
 	return hostName;
 }

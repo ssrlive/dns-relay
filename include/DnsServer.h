@@ -16,7 +16,7 @@ private:
 	std::shared_ptr<uvw::Loop> loop;
 	uvw::Addr host;
 	std::string upstream = "8.8.8.8";
-	const char* queryDns(char* rawData,size_t length);
+	std::pair<bool, const char*> queryDns(char* rawData,size_t length);
 	std::string getHostName(const char* raw, size_t length);
 };
 
