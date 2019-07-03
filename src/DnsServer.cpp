@@ -64,10 +64,15 @@ std::pair<bool,const char*> DnsServer::queryDns(char* rawData, size_t length)
 	auto upStreamRequest = loop->resource<uvw::GetAddrInfoReq>();
 	auto result = upStreamRequest->nodeAddrInfoSync(hostName);
 	if (result.first) {
-		auto ip = result.second.get();
-		cout << ip->ai_flags;
-		cout << ip->ai_canonname;
-		return std::pair(true, ip->ai_canonname);
+		auto current = result.second.get();
+		std::vector<std::string> results;
+		auto buffer = new char[INET6_ADDRSTRLEN];
+		do {
+			results.push_back(inet_ntop(current->ai_family, &((const sockaddr_in*)current->ai_addr)->sin_addr, buffer, current->ai_addrlen));
+			current = current->ai_next;
+		} while (current);
+		delete[] buffer;
+		return std::pair(true, results[0].c_str());
 	}
 	else
 		return std::pair(false, nullptr);
