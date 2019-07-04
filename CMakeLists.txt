@@ -16,7 +16,7 @@ add_executable(dnsRelay
    ${DIR_SRCS}
 )
 if(WIN32)
-target_link_libraries(dnsRelay ws2_32 libuv IPHLPAPI Psapi Userenv libuv) 
+target_link_libraries(dnsRelay ws2_32 IPHLPAPI Psapi Userenv libuv) 
 elseif(UNIX)
 target_link_libraries(dnsRelay uv)
 endif()
