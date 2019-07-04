@@ -2,13 +2,31 @@
 //
 
 #include "DnsServer.h"
+#include "DNS Relay.h"
 #include <signal.h>
-using namespace std;
-unique_ptr<DnsServer> server;
-void signalHandler(int sig);
-int main() {
+#include "getopt.h"
+int main(int argc, char* argv[]) {
+	int ch;
+	std::string hostFilePath = "../hosts";
+	while ((ch = getopt(argc, argv, "dDc:")) != -1){
+		switch (ch)
+		{
+		case 'd':
+			debugLevel = 1;
+			break;
+		case 'D':
+			debugLevel = 2;
+			break;
+		case 'c':
+			hostFilePath = optarg;
+			break;
+		default:
+			break;
+		}
+	}
 	server = unique_ptr<DnsServer>{ new DnsServer("127.0.0.1",1053) };
-	server->setUpstream("1.1.1.1");
+	if(!hostFilePath.empty())
+	server->loadHost(hostFilePath.c_str());
 	server->start();
 	signal(SIGINT, signalHandler);
 	signal(SIGTERM, signalHandler);

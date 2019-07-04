@@ -1,11 +1,13 @@
 #include "DnsServer.h"
+#include <fstream>
+#include <sstream>
 using std::cout;
 using std::endl;
-DnsServer::DnsServer(std::string address, int port):host(uvw::Addr{ address, port }){
+DnsServer::DnsServer(std::string address, int port) :host(uvw::Addr{ address, port }) {
 	loop = uvw::Loop::getDefault();
 }
 
-void DnsServer::start(){
+void DnsServer::start() {
 	auto server = loop->resource<uvw::UDPHandle>();
 	server->on<uvw::UDPDataEvent>([&](const auto& event, const auto&) {
 		cout << "Receive from " << event.sender.ip << ":" << event.sender.port << endl;
@@ -19,13 +21,13 @@ void DnsServer::start(){
 #endif
 		request[event.length] = '\0';
 
-		auto result = queryDns(request, event.length + 1);//process query
+		auto [status, result] = queryDns(request, event.length + 1);//process query
 		delete[] request;
-		if (result.first == false) {
+		if (!status) {
 			return;
 		}
 		else {
-			std::string reply = result.second;
+			std::string reply = result;
 			//copy reply to buffer
 			auto toSend = new char[reply.size()];
 #ifdef _MSC_VER
@@ -53,34 +55,61 @@ void DnsServer::start(){
 	}
 }
 
+bool DnsServer::loadHost(const char* filePath) {
+	std::fstream hostStream(filePath, std::ios::in);
+	if (!hostStream.is_open()) {
+		hostStream.close();
+		return false;
+	}
+	auto buffer = new char[1024];
+	while (!hostStream.eof()) {
+		hostStream.getline(buffer, 1024);
+		if (buffer[0] == '#' || buffer[0] == '\r')// ignore comments
+			continue;
+		std::string address, host;
+		std::stringstream lineStream(buffer);
+		lineStream >> address;
+		lineStream >> host;
+		if (address.empty() || host.empty()) {
+			hostStream.close();
+			delete[] buffer;
+			return false;
+		}
+		config[host] = address;
+	}
+	delete[] buffer;
+	return true;
+}
+
 DnsServer::~DnsServer()
 {
 	loop->close();
 }
 
-std::pair<bool,const char*> DnsServer::queryDns(char* rawData, size_t length)
-{
+std::pair<bool, const char*> DnsServer::queryDns(char* rawData, size_t length) {
 	auto hostName = getHostName(rawData, length);
-	auto upStreamRequest = loop->resource<uvw::GetAddrInfoReq>();
-	auto result = upStreamRequest->nodeAddrInfoSync(hostName);
-	if (result.first) {
-		auto current = result.second.get();
-		std::vector<std::string> results;
-		auto buffer = new char[INET6_ADDRSTRLEN];
-		do {
-			results.push_back(inet_ntop(current->ai_family, &((const sockaddr_in*)current->ai_addr)->sin_addr, buffer, current->ai_addrlen));
-			current = current->ai_next;
-		} while (current);
-		delete[] buffer;
-		return std::pair(true, results[0].c_str());
+	if (hostName[hostName.length() - 1] == '.')
+		hostName.pop_back();//remove the last '.'
+	std::vector<std::string> results;
+	if (auto findResult = config.find(hostName); findResult != config.end()) {
+		results.push_back(config[hostName]);
 	}
-	else
-		return std::pair(false, nullptr);
+	else {
+		auto upStreamRequest = loop->resource<uvw::GetAddrInfoReq>();
+		auto result = upStreamRequest->nodeAddrInfoSync(hostName);
+		if (result.first) {
+			auto current = result.second.get();
+			auto buffer = new char[INET6_ADDRSTRLEN];
+			do {
+				results.push_back(inet_ntop(current->ai_family, &((const sockaddr_in*)current->ai_addr)->sin_addr, buffer, current->ai_addrlen));
+				current = current->ai_next;
+			} while (current);
+			delete[] buffer;
+		}
+	}
+	return std::pair(false, nullptr);
 }
 
-void DnsServer::setUpstream(std::string upstreamDns){
-	upstream = upstreamDns;
-}
 
 std::string DnsServer::getHostName(const char* raw, size_t length) {
 	auto buf = new char[BUFFERSIZE];
@@ -89,7 +118,7 @@ std::string DnsServer::getHostName(const char* raw, size_t length) {
 	memcpy(buf, &(raw[sizeof(DNSHeader)]), length - 16);
 	for (int i = 0; i < length - 16; i++) {
 		if (buf[i] > 0 && buf[i] <= 63) {
-			for (int j = buf[i]; j > 0; j--) {//byte count
+			for (int count = buf[i]; count > 0; count--) {//byte count
 				hostName += buf[++i];
 			}
 			hostName += '.';
