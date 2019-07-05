@@ -21,21 +21,20 @@ void DnsServer::start() {
 #endif
 		request[event.length] = '\0';
 
-		auto [status, result] = queryDns(request, event.length + 1);//process query
+		auto [status, response] = queryDns(request, event.length + 1);//process query
 		delete[] request;
 		if (!status) {
 			return;
 		}
 		else {
-			std::string reply = result;
 			//copy reply to buffer
-			auto toSend = new char[reply.size()];
+			auto toSend = new char[response.second];
 #ifdef _MSC_VER
-			memcpy_s(toSend, reply.size(), reply.c_str(), reply.size());
+			memcpy_s(toSend, response.second, response.first, response.second);
 #else
 			memcpy(toSend, response.c_str(), response.size());
 #endif
-			server->trySend(event.sender, toSend, reply.length());
+			server->trySend(event.sender, toSend, response.second);
 			delete[] toSend;
 		}
 		});
@@ -86,7 +85,9 @@ DnsServer::~DnsServer()
 	loop->close();
 }
 
-std::pair<bool, const char*> DnsServer::queryDns(char* rawData, size_t length) {
+std::pair<bool, std::pair<const char*, int>> DnsServer::queryDns(char* rawData, size_t length) {
+	if (getType(rawData, length) != 1)
+		return std::pair(false, std::pair(nullptr, 0));
 	auto hostName = getHostName(rawData, length);
 	if (hostName[hostName.length() - 1] == '.')
 		hostName.pop_back();//remove the last '.'
@@ -107,7 +108,52 @@ std::pair<bool, const char*> DnsServer::queryDns(char* rawData, size_t length) {
 			delete[] buffer;
 		}
 	}
-	return std::pair(false, nullptr);
+	auto response = new char[512];
+	memset(response, 0, 512);
+	memcpy(response, rawData, length);
+	auto a = results.empty() || config[hostName] == "0.0.0.0" ? htons(0x8183) : htons(0x8180);//0x8180=1000 0001 1000 000?
+	memcpy(&response[2], &a, sizeof(unsigned short));
+	response[7] = config[hostName] == "0.0.0.0" ? 0 : (char)results.size();
+	for (auto ips : results) {
+		int offset = 0;
+		char answer[28] = { 0 };//ipv4 16bytes ipv6 28bytes
+		//Name
+		unsigned short Name = htons(0xc00c); //1100 0000 0000
+		memcpy(answer, &Name, sizeof(unsigned short));
+		offset += sizeof(unsigned short);
+		//Type
+		unsigned short queryType;
+		memcpy(&queryType, rawData + length - 4, sizeof(unsigned short));
+		auto type = ntohs(queryType) == 28 ? htons(0x001c) : htons(0x0001);//0x001c for AAAA, 0x0001 for A
+		memcpy(answer + offset, &type, sizeof(unsigned short));
+		offset += sizeof(unsigned short);
+		//Class
+		unsigned short Class = htons(0x0001);
+		memcpy(answer + offset, &Class, sizeof(unsigned short));
+		offset += sizeof(unsigned short);
+		//ttl
+		auto ttl = htonl(0x0258); //600 seconds
+		memcpy(answer + offset, &ttl, sizeof(u_long));
+		offset += sizeof(u_long);
+		//data length
+		if (queryType != 28 && ips.length() > 16)//ipv6 address longer than "255.255.255.255"
+			continue;
+		unsigned short dataLength;
+		if (queryType == 28)
+			dataLength = htons(0x0010);
+		else
+			dataLength = htons(0x0004);
+		memcpy(answer + offset, &dataLength, sizeof(unsigned short));
+		offset += sizeof(unsigned short);
+		//ip data
+		auto ipData = new char[16];
+		inet_pton(queryType == 28 ? AF_INET6 : AF_INET, ips.c_str(), ipData);
+		memcpy(answer + offset, &ipData, queryType == 28 ? sizeof(int16_t) : sizeof(int32_t));
+		offset += queryType == 28 ? sizeof(int16_t) : sizeof(int32_t);
+		memcpy(response + length -1, answer, offset);
+		length += offset;
+	}
+	return std::pair(true, std::pair(response, length));
 }
 
 
@@ -128,4 +174,15 @@ std::string DnsServer::getHostName(const char* raw, size_t length) {
 	}
 	delete[] buf;
 	return hostName;
+}
+
+unsigned short DnsServer::getType(const char* raw, size_t length){
+	raw += sizeof(DNSHeader);
+	int nameLength = 0;
+	do
+		nameLength++;//Get QueryName length
+	while (*(raw + nameLength) != '\0');
+	raw += (++nameLength);
+	auto tmp = (unsigned short*)raw;
+	return htons(*(tmp++));
 }
