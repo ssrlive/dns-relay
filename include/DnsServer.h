@@ -20,5 +20,6 @@ private:
 	std::map<std::string, std::string> config;
 	std::pair<bool, const char*> queryDns(char* rawData,size_t length);
 	std::string getHostName(const char* raw, size_t length);
+	unsigned short getType(const char* raw, size_t length);
 };
 
