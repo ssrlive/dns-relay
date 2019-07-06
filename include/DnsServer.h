@@ -1,6 +1,7 @@
 #include <iostream>
 #include <uvw.hpp>
 #include <map>
+#include "cache.h"
 using DNSHeader=struct {
 	unsigned short ID, Flags, QuestNum, AnswerNum, AuthorNum, AdditionNum;
 };
@@ -13,6 +14,8 @@ public:
 	void start();
 	//load host file
 	bool loadHost(const char* filePath);
+	//set redis server conncection
+	void setRedis(const char* host, size_t port);
 	~DnsServer();
 private:
 	std::shared_ptr<uvw::Loop> loop;
@@ -21,5 +24,6 @@ private:
 	std::pair<bool, std::pair<const char*, int>> queryDns(char* rawData, size_t length);
 	std::string getHostName(const char* raw, size_t length);
 	unsigned short getType(const char* raw, size_t length);
+	cache* cacher = nullptr;
 };
 

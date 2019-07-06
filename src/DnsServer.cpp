@@ -94,16 +94,25 @@ std::pair<bool, std::pair<const char*, int>> DnsServer::queryDns(char* rawData, 
 		results.push_back(config[hostName]);
 	}
 	else {
-		auto upStreamRequest = loop->resource<uvw::GetAddrInfoReq>();
-		auto result = upStreamRequest->nodeAddrInfoSync(hostName);
-		if (result.first) {
-			auto current = result.second.get();
-			auto buffer = new char[2 * INET6_ADDRSTRLEN];
-			do {
-				results.push_back(inet_ntop(current->ai_family, &((const sockaddr_in*)current->ai_addr)->sin_addr, buffer, current->ai_addrlen));
-				current = current->ai_next;
-			} while (current);
-			delete[] buffer;
+		auto [queryCacheStatus, cacheResult] = cacher->getStringSets(hostName.c_str());
+		if (queryCacheStatus) {
+			results.swap(cacheResult);
+		}
+		else {
+			auto upStreamRequest = loop->resource<uvw::GetAddrInfoReq>();
+			auto result = upStreamRequest->nodeAddrInfoSync(hostName);
+			if (result.first) {
+				auto current = result.second.get();
+				auto buffer = new char[2 * INET6_ADDRSTRLEN];
+				do {
+					std::string ip = inet_ntop(current->ai_family, &((const sockaddr_in*)current->ai_addr)->sin_addr, buffer, current->ai_addrlen);
+					results.push_back(ip);
+					current = current->ai_next;
+				} while (current);
+				if (cacher && !results.empty())
+					cacher->setCache(hostName.c_str(), results, 600);
+				delete[] buffer;
+			}
 		}
 	}
 	auto response = new char[512];
@@ -195,4 +204,8 @@ unsigned short DnsServer::getType(const char* raw, size_t length){
 	raw += (++nameLength);
 	auto tmp = (unsigned short*)raw;
 	return htons(*(tmp++));
+}
+void DnsServer::setRedis(const char* host, size_t port){
+	if (cacher == nullptr)
+		cacher = new cache(host, port);
 }
