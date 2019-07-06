@@ -24,7 +24,7 @@ int main(int argc, char* argv[]) {
 			break;
 		}
 	}
-	server = unique_ptr<DnsServer>{ new DnsServer("127.0.0.1",53) };
+	server = unique_ptr<DnsServer>{ new DnsServer("127.0.0.1",1053,"8.8.8.8") };
 	if(!hostFilePath.empty())
 	server->loadHost(hostFilePath.c_str());
 	server->setRedis("127.0.0.1", 6379);

@@ -1,14 +1,16 @@
 #include "DnsServer.h"
+#include <mutex>
+#include <condition_variable>
 #include <fstream>
 #include <sstream>
 using std::cout;
 using std::endl;
-DnsServer::DnsServer(std::string address, int port) :host(uvw::Addr{ address, port }) {
+DnsServer::DnsServer(std::string address, int port, const char* upStream) :host(uvw::Addr{ address, port }), upStream(upStream) {
 	loop = uvw::Loop::getDefault();
 }
 
 void DnsServer::start() {
-	auto server = loop->resource<uvw::UDPHandle>();
+	server = loop->resource<uvw::UDPHandle>();
 	server->on<uvw::UDPDataEvent>([&](const auto& event, const auto&) {
 		cout << "Receive from " << event.sender.ip << ":" << event.sender.port << endl;
 		if (event.length == 0)
@@ -21,7 +23,7 @@ void DnsServer::start() {
 #endif
 		request[event.length] = '\0';
 
-		auto [status, response] = queryDns(request, event.length + 1);//process query
+		auto [status, response] = queryDns(request, event.length + 1, event.sender);//process query
 		delete[] request;
 		if (!status) {
 			return;
@@ -85,96 +87,115 @@ DnsServer::~DnsServer()
 	loop->close();
 }
 
-std::pair<bool, std::pair<const char*, int>> DnsServer::queryDns(char* rawData, size_t length) {
+std::pair<bool, std::pair<const char*, int>> DnsServer::queryDns(char* rawData, size_t length, const uvw::Addr& sender) {
 	auto hostName = getHostName(rawData, length);
 	if (hostName[hostName.length() - 1] == '.')
 		hostName.pop_back();//remove the last '.'
 	std::vector<std::string> results;
-	if (config.find(hostName)!= config.end()) {//if this ip is in the host file
+	auto response = new char[512];
+	if (config.find(hostName) != config.end()) {//if this ip is in the host file
 		results.push_back(config[hostName]);
 	}
 	else {
 		auto [queryCacheStatus, cacheResult] = cacher->getStringSets(hostName.c_str());
-		if (queryCacheStatus) {
+		if (queryCacheStatus)
 			results.swap(cacheResult);
+	}
+	if (results.size() == 0) {
+		try {
+			auto newLoop = uvw::Loop::create();//create a new loop 
+			auto upStreamRequest = newLoop->resource<uvw::UDPHandle>();//new UDP Handler
+			upStreamRequest->once<uvw::UDPDataEvent>([&](const auto& dataEvent, const auto& handler) {
+				setCache(dataEvent.data.get(), dataEvent.length, length, hostName.c_str());//set cache is async, don't worry
+				memcpy(response, dataEvent.data.get(), dataEvent.length);
+				length = dataEvent.length;
+				newLoop->stop();//stop loop
+				});
+			upStreamRequest->recv();
+			upStreamRequest->trySend(upStream, 53, rawData, length);
+			newLoop->run();//start new event loop until memcpy finished
+			newLoop->close();
+			return std::pair(true, std::pair(response, length));
 		}
-		else {
-			auto upStreamRequest = loop->resource<uvw::GetAddrInfoReq>();
-			auto result = upStreamRequest->nodeAddrInfoSync(hostName);
-			if (result.first) {
-				auto current = result.second.get();
-				auto buffer = new char[2 * INET6_ADDRSTRLEN];
-				do {
-					std::string ip = inet_ntop(current->ai_family, &((const sockaddr_in*)current->ai_addr)->sin_addr, buffer, current->ai_addrlen);
-					results.push_back(ip);
-					current = current->ai_next;
-				} while (current);
-				if (cacher && !results.empty())
-					cacher->setCache(hostName.c_str(), results, 600);
-				delete[] buffer;
-			}
+		catch (std::exception& e) {
+			cout << e.what() << endl;
+			exit(-1);
 		}
 	}
-	auto response = new char[512];
-	memset(response, 0, 512);
-	memcpy(response, rawData, length);
-	auto a = results.empty()
-		|| (config.find(hostName) != config.end() && config[hostName] == "0.0.0.0") //blocked ip
-		|| (getType(rawData, length) != 1 && getType(rawData, length) != 28) //not A or AAAA
-		? htons(0x8183) : htons(0x8180);//0x8180=1000 0001 1000 000(0/3)
-	memcpy(&response[2], &a, sizeof(unsigned short));
-	response[7] = results.empty() || results[0] == "0.0.0.0" ? 0 : (char)results.size();
-	for (auto ips : results) {
-		//if it is ipv6 address
-		unsigned short queryType;
-		memcpy(&queryType, rawData + length - 4, sizeof(unsigned short));
-		bool isIpv6 = false;
-		if (queryType == 28) {
-			if (ips.length() > 15) {
-				isIpv6 = true;
+	else {
+		memset(response, 0, 512);
+		memcpy(response, rawData, length);
+		auto a = results.empty()
+			|| (config.find(hostName) != config.end() && config[hostName] == "0.0.0.0") //blocked ip
+			|| (getType(rawData, length) != 1 && getType(rawData, length) != 28) //not A or AAAA
+			? htons(0x8183) : htons(0x8180);//0x8180=1000 0001 1000 000(0/3)
+		memcpy(&response[2], &a, sizeof(unsigned short));
+		response[7] = results.empty() || results[0] == "0.0.0.0" ? 0 : (char)results.size();
+		for (auto ips : results) {
+			//if it is ipv6 address
+			unsigned short queryType;
+			memcpy(&queryType, rawData + length - 4, sizeof(unsigned short));
+			bool isIpv6 = false;
+			if (queryType == 28) {
+				if (ips.length() > 15) {
+					isIpv6 = true;
+				}
+				else
+					continue;//invaild result
 			}
+			//start answer
+			int offset = 0;
+			char answer[28] = { 0 };//ipv4 16bytes ipv6 28bytes
+			//Name
+			unsigned short Name = htons(0xc00c); //1100 0000 0000
+			memcpy(answer, &Name, sizeof(unsigned short));
+			offset += sizeof(unsigned short);
+			//Type
+			auto type = isIpv6 ? htons(0x001c) : htons(0x0001);//0x001c for AAAA, 0x0001 for A
+			memcpy(answer + offset, &type, sizeof(unsigned short));
+			offset += sizeof(unsigned short);
+			//Class
+			unsigned short Class = htons(0x0001);
+			memcpy(answer + offset, &Class, sizeof(unsigned short));
+			offset += sizeof(unsigned short);
+			//ttl
+			auto ttl = htonl(0x0258); //600 seconds
+			memcpy(answer + offset, &ttl, sizeof(u_long));
+			offset += sizeof(u_long);
+			//data length
+			unsigned short dataLength;
+			if (isIpv6)
+				dataLength = htons(0x0010);
 			else
-				continue;//invaild result
+				dataLength = htons(0x0004);
+			memcpy(answer + offset, &dataLength, sizeof(unsigned short));
+			offset += sizeof(unsigned short);
+			//ip data
+			auto ipData = new char[isIpv6 ? 16 : 4];
+			inet_pton(isIpv6 ? AF_INET6 : AF_INET, ips.c_str(), ipData);
+			memcpy(answer + offset, ipData, isIpv6 ? 16 : 4);
+			offset += isIpv6 ? 16 : 4;
+			memcpy(response + length - 1, answer, offset);
+			length += offset;
+			delete[] ipData;
 		}
-		//start answer
-		int offset = 0;
-		char answer[28] = { 0 };//ipv4 16bytes ipv6 28bytes
-		//Name
-		unsigned short Name = htons(0xc00c); //1100 0000 0000
-		memcpy(answer, &Name, sizeof(unsigned short));
-		offset += sizeof(unsigned short);
-		//Type
-		auto type = isIpv6 ? htons(0x001c) : htons(0x0001);//0x001c for AAAA, 0x0001 for A
-		memcpy(answer + offset, &type, sizeof(unsigned short));
-		offset += sizeof(unsigned short);
-		//Class
-		unsigned short Class = htons(0x0001);
-		memcpy(answer + offset, &Class, sizeof(unsigned short));
-		offset += sizeof(unsigned short);
-		//ttl
-		auto ttl = htonl(0x0258); //600 seconds
-		memcpy(answer + offset, &ttl, sizeof(u_long));
-		offset += sizeof(u_long);
-		//data length
-		unsigned short dataLength;
-		if (isIpv6)
-			dataLength = htons(0x0010);
-		else
-			dataLength = htons(0x0004);
-		memcpy(answer + offset, &dataLength, sizeof(unsigned short));
-		offset += sizeof(unsigned short);
-		//ip data
-		auto ipData = new char[isIpv6 ? 16 : 4];
-		inet_pton(isIpv6 ? AF_INET6 : AF_INET, ips.c_str(), ipData);
-		memcpy(answer + offset, ipData, isIpv6 ? 16 : 4);
-		offset += isIpv6 ? 16 : 4;
-		memcpy(response + length -1, answer, offset);
-		length += offset;
-		delete[] ipData;
+		return std::pair(true, std::pair(response, length));
 	}
-	return std::pair(true, std::pair(response, length));
+	/*
+	auto result = upStreamRequest->nodeAddrInfoSync(hostName);
+	if (result.first) {
+		auto current = result.second.get();
+		auto buffer = new char[2 * INET6_ADDRSTRLEN];
+		do {
+			std::string ip = inet_ntop(current->ai_family, &((const sockaddr_in*)current->ai_addr)->sin_addr, buffer, current->ai_addrlen);
+			results.push_back(ip);
+			current = current->ai_next;
+		} while (current);
+		if (cacher && !results.empty())
+			cacher->setCache(hostName.c_str(), results, 600);
+		delete[] buffer;
+	}*/
 }
-
 
 std::string DnsServer::getHostName(const char* raw, size_t length) {
 	auto buf = new char[BUFFERSIZE];
@@ -195,7 +216,7 @@ std::string DnsServer::getHostName(const char* raw, size_t length) {
 	return hostName;
 }
 
-unsigned short DnsServer::getType(const char* raw, size_t length){
+unsigned short DnsServer::getType(const char* raw, size_t length) {
 	raw += sizeof(DNSHeader);
 	int nameLength = 0;
 	do
@@ -205,7 +226,37 @@ unsigned short DnsServer::getType(const char* raw, size_t length){
 	auto tmp = (unsigned short*)raw;
 	return htons(*(tmp++));
 }
-void DnsServer::setRedis(const char* host, size_t port){
+void DnsServer::setRedis(const char* host, size_t port) {
 	if (cacher == nullptr)
 		cacher = new cache(host, port);
+}
+
+
+void DnsServer::setCache(const char* rawData, size_t length,size_t headerLength,const char* keys) {
+	auto answerData = rawData + headerLength - 1;
+	using responseStruct= struct {
+		unsigned short name;
+		unsigned short type;
+		unsigned short classes;
+		u_long ttl;
+		unsigned short length;
+	};
+	std::vector<std::string> answers;
+	size_t minTTL = INTMAX_MAX;
+	for (int restAnswers = rawData[7]; restAnswers > 0; restAnswers--) {
+		responseStruct temp;
+		memcpy(&temp, answerData, sizeof(responseStruct));
+		auto type = ntohs(temp.type);
+		u_long ttl;
+		memcpy(&ttl, (char*)&temp + 3 * sizeof(unsigned short), sizeof(u_long));
+		ttl = ntohl(ttl);
+		if (minTTL > ttl)
+			minTTL = ttl;
+		auto buffer = new char[INET6_ADDRSTRLEN];
+		answers.push_back(inet_ntop(type == 28 ? AF_INET6 : AF_INET, answerData + 4 * sizeof(unsigned short) + sizeof(u_long), buffer, INET6_ADDRSTRLEN));
+		delete[] buffer;
+		answerData += 4 * sizeof(unsigned short) + sizeof(u_long) + type == 28 ? 16 : 4;
+	}
+	if (answers.size() != 0)
+		cacher->setCache(keys, answers, minTTL);
 }
