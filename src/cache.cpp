@@ -1,7 +1,13 @@
 #include "cache.h"
 cache::cache(const char* host, size_t port){
 	logger = std::unique_ptr<cpp_redis::logger>(new cpp_redis::logger);
-	client.connect(host, port);
+	try{
+		client.connect(host, port);
+	}
+	catch(exception& e){
+		std::cout << "Connect to Redis failed: "<< e.what() << std::endl;
+		exit(255);
+	}
 	std::cout << "Server connect to Redis： " << host << ":" << port << std::endl;
 }
 std::pair<bool,std::vector<std::string>> cache::getStringSets(const char* key){
