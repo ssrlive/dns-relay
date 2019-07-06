@@ -18,7 +18,7 @@ private:
 	std::shared_ptr<uvw::Loop> loop;
 	uvw::Addr host;
 	std::map<std::string, std::string> config;
-	std::pair<bool, std::pair<const char*, int>> DnsServer::queryDns(char* rawData, size_t length);
+	std::pair<bool, std::pair<const char*, int>> queryDns(char* rawData, size_t length);
 	std::string getHostName(const char* raw, size_t length);
 	unsigned short getType(const char* raw, size_t length);
 };
