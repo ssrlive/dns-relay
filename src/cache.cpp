@@ -4,7 +4,7 @@ cache::cache(const char* host, size_t port){
 	try{
 		client.connect(host, port);
 	}
-	catch(exception& e){
+	catch(std::exception& e){
 		std::cout << "Connect to Redis failed: "<< e.what() << std::endl;
 		exit(255);
 	}
