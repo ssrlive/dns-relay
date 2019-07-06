@@ -1,9 +1,8 @@
 #include "cache.h"
 cache::cache(const char* host, size_t port){
 	logger = std::unique_ptr<cpp_redis::logger>(new cpp_redis::logger);
-	client.connect(host, port, [](const std::string& host, std::size_t port) {
-			std::cout << "Server connect to Redis： " << host << ":" << port << std::endl;
-		});
+	client.connect(host, port);
+	std::cout << "Server connect to Redis： " << host << ":" << port << std::endl;
 }
 std::pair<bool,std::vector<std::string>> cache::getStringSets(const char* key){
 	std::vector<std::string> toReturn;
