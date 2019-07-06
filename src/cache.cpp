@@ -8,7 +8,7 @@ cache::cache(const char* host, size_t port){
 		std::cout << "Connect to Redis failed: "<< e.what() << std::endl;
 		exit(255);
 	}
-	std::cout << "Server connect to Redis： " << host << ":" << port << std::endl;
+	std::cout << "Server connect to Redis: " << host << ":" << port << std::endl;
 }
 std::pair<bool,std::vector<std::string>> cache::getStringSets(const char* key){
 	std::vector<std::string> toReturn;
