@@ -90,7 +90,7 @@ std::pair<bool, std::pair<const char*, int>> DnsServer::queryDns(char* rawData, 
 	if (hostName[hostName.length() - 1] == '.')
 		hostName.pop_back();//remove the last '.'
 	std::vector<std::string> results;
-	if (config.find(hostName)!= config.end()) {
+	if (config.find(hostName)!= config.end()) {//if this ip is in the host file
 		results.push_back(config[hostName]);
 	}
 	else {
