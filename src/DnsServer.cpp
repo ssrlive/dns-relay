@@ -107,7 +107,7 @@ std::pair<bool, std::pair<const char*, int>> DnsServer::queryDns(char* rawData, 
 	}
 	else {
 		auto [queryCacheStatus, cacheResult] = cacher->getStringSets(hostName.c_str());
-		if (queryCacheStatus)
+		if (queryCacheStatus)//will be true if cache hit
 			results.swap(cacheResult);
 	}
 	if (results.size() == 0) {
@@ -141,14 +141,14 @@ std::pair<bool, std::pair<const char*, int>> DnsServer::queryDns(char* rawData, 
 			|| (queryType != 1 && queryType != 28) //not A or AAAA
 			? htons(0x8183) : htons(0x8180);//0x8180=1000 0001 1000 000(0/3)
 		memcpy(&response[2], &a, sizeof(unsigned short));
-		for (auto ips : results) {
+		for (auto IPs : results) {
 			//if it is ipv6 address
 			bool isIpv6 = false;
-			if (ips.length() > 15) {
+			if (IPs.length() > 15) {
 				if (queryType == 28)
 					isIpv6 = true;
 				else {
-					auto current = std::find(results.begin(), results.end(), ips);
+					auto current = std::find(results.begin(), results.end(), IPs);
 					if (current != results.end())
 						results.erase(current);//discard invaild data (Query A, return AAAA)
 					continue;
@@ -156,7 +156,7 @@ std::pair<bool, std::pair<const char*, int>> DnsServer::queryDns(char* rawData, 
 			}
 			else {
 				if (queryType != 1) {
-					auto current = std::find(results.begin(), results.end(), ips);
+					auto current = std::find(results.begin(), results.end(), IPs);
 					if (current != results.end())
 						results.erase(current);//discard invaild data (Query AAAA, return AAA)
 					continue;
@@ -191,7 +191,7 @@ std::pair<bool, std::pair<const char*, int>> DnsServer::queryDns(char* rawData, 
 			offset += sizeof(unsigned short);
 			//ip data
 			auto ipData = new char[isIpv6 ? 16 : 4];
-			inet_pton(isIpv6 ? AF_INET6 : AF_INET, ips.c_str(), ipData);
+			inet_pton(isIpv6 ? AF_INET6 : AF_INET, IPs.c_str(), ipData);
 			memcpy(answer + offset, ipData, isIpv6 ? 16 : 4);
 			offset += isIpv6 ? 16 : 4;
 			memcpy(response + length - 1, answer, offset);
@@ -259,9 +259,10 @@ void DnsServer::setCache(const char* rawData, size_t dataLength, size_t headerLe
 		memcpy(&length, (char*)& temp + 3 * sizeof(unsigned short) + sizeof(u_long), sizeof(unsigned short));
 		length = ntohs(length);
 		auto buffer = new char[INET6_ADDRSTRLEN];
+		//get IPs from answer
 		answers.push_back(inet_ntop(type == 28 ? AF_INET6 : AF_INET, answerData + 4 * sizeof(unsigned short) + sizeof(u_long), buffer, INET6_ADDRSTRLEN));
 		delete[] buffer;
-		answerData += 4 * sizeof(unsigned short) + sizeof(u_long) + length;
+		answerData += 4 * sizeof(unsigned short) + sizeof(u_long) + length;//next answer
 	}
 	if (answers.size() != 0)
 		cacher->setCache(keys, answers, minTTL);
