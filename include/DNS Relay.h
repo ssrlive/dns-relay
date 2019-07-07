@@ -4,5 +4,12 @@
 #pragma once
 
 #include <iostream>
+#include <sstream>
 
+using namespace std;
+unique_ptr<DnsServer> server;
+void signalHandler(int sig);
+int debugLevel;
+#define CHECKDEBUG() {debugLevel==0?true:false; }
+#define CHECKFULLDEBUG() {debugLevel==2?true:false; }
 // TODO: Reference additional headers your program requires here.

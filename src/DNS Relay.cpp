@@ -1,14 +1,42 @@
-﻿// DNS Relay.cpp : Defines the entry point for the application.
+// DNS Relay.cpp : Defines the entry point for the application.
 //
 
 #include "DnsServer.h"
+#include "DNS Relay.h"
 #include <signal.h>
-using namespace std;
-unique_ptr<DnsServer> server;
-void signalHandler(int sig);
-int main() {
-	server = unique_ptr<DnsServer>{ new DnsServer("127.0.0.1",1053) };
-	server->setUpstream("1.1.1.1");
+#include "getopt.h"
+int main(int argc, char* argv[]) {
+	int ch;
+	std::string hostFilePath = "../hosts";
+	bool useRedis = false;
+	int port = 53;//default port
+	while ((ch = getopt(argc, argv, "dDRc:p:")) != -1){
+		switch (ch)
+		{
+		case 'd':
+			debugLevel = 1;
+			break;
+		case 'D':
+			debugLevel = 2;
+			break;
+		case 'R':
+			useRedis = true;
+			break;
+		case 'c':
+			hostFilePath = optarg;
+			break;
+		case 'p':
+			std::stringstream(optarg) >> port;
+			break;
+		default:
+			break;
+		}
+	}
+	server = unique_ptr<DnsServer>{ new DnsServer("127.0.0.1",port,"8.8.8.8") };
+	if(!hostFilePath.empty())
+	server->loadHost(hostFilePath.c_str());
+	if (useRedis)
+		server->setRedis("127.0.0.1", 6379);
 	server->start();
 	signal(SIGINT, signalHandler);
 	signal(SIGTERM, signalHandler);
