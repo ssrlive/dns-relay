@@ -181,20 +181,6 @@ std::pair<bool, std::pair<const char*, int>> DnsServer::queryDns(char* rawData, 
 		}
 		return std::pair(true, std::pair(response, length));
 	}
-	/*
-	auto result = upStreamRequest->nodeAddrInfoSync(hostName);
-	if (result.first) {
-		auto current = result.second.get();
-		auto buffer = new char[2 * INET6_ADDRSTRLEN];
-		do {
-			std::string ip = inet_ntop(current->ai_family, &((const sockaddr_in*)current->ai_addr)->sin_addr, buffer, current->ai_addrlen);
-			results.push_back(ip);
-			current = current->ai_next;
-		} while (current);
-		if (cacher && !results.empty())
-			cacher->setCache(hostName.c_str(), results, 600);
-		delete[] buffer;
-	}*/
 }
 
 std::string DnsServer::getHostName(const char* raw, size_t length) {
@@ -232,7 +218,7 @@ void DnsServer::setRedis(const char* host, size_t port) {
 }
 
 
-void DnsServer::setCache(const char* rawData, size_t length,size_t headerLength,const char* keys) {
+void DnsServer::setCache(const char* rawData, size_t length, size_t headerLength, const char* keys) {
 	auto answerData = rawData + headerLength - 1;
 	using responseStruct= struct {
 		unsigned short name;
@@ -248,7 +234,7 @@ void DnsServer::setCache(const char* rawData, size_t length,size_t headerLength,
 		memcpy(&temp, answerData, sizeof(responseStruct));
 		auto type = ntohs(temp.type);
 		u_long ttl;
-		memcpy(&ttl, (char*)&temp + 3 * sizeof(unsigned short), sizeof(u_long));
+		memcpy(&ttl, (char*)& temp + 3 * sizeof(unsigned short), sizeof(u_long));
 		ttl = ntohl(ttl);
 		if (minTTL > ttl)
 			minTTL = ttl;
