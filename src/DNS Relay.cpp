@@ -8,7 +8,9 @@
 int main(int argc, char* argv[]) {
 	int ch;
 	std::string hostFilePath = "../hosts";
-	while ((ch = getopt(argc, argv, "dDc:")) != -1){
+	bool useRedis = false;
+	int port = 53;//default port
+	while ((ch = getopt(argc, argv, "dDRc:p:")) != -1){
 		switch (ch)
 		{
 		case 'd':
@@ -17,17 +19,24 @@ int main(int argc, char* argv[]) {
 		case 'D':
 			debugLevel = 2;
 			break;
+		case 'R':
+			useRedis = true;
+			break;
 		case 'c':
 			hostFilePath = optarg;
+			break;
+		case 'p':
+			std::stringstream(optarg) >> port;
 			break;
 		default:
 			break;
 		}
 	}
-	server = unique_ptr<DnsServer>{ new DnsServer("127.0.0.1",53) };
+	server = unique_ptr<DnsServer>{ new DnsServer("127.0.0.1",port,"8.8.8.8") };
 	if(!hostFilePath.empty())
 	server->loadHost(hostFilePath.c_str());
-	server->setRedis("127.0.0.1", 6379);
+	if (useRedis)
+		server->setRedis("127.0.0.1", 6379);
 	server->start();
 	signal(SIGINT, signalHandler);
 	signal(SIGTERM, signalHandler);
