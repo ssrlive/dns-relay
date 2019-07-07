@@ -10,7 +10,7 @@ int main(int argc, char* argv[]) {
 	std::string hostFilePath = "../hosts";
 	bool useRedis = false;
 	int port = 53;//default port
-	while ((ch = getopt(argc, argv, "dDRc:p:")) != -1){
+	while ((ch = getopt(argc, argv, "dDRc:p:h")) != -1){
 		switch (ch)
 		{
 		case 'd':
@@ -28,11 +28,20 @@ int main(int argc, char* argv[]) {
 		case 'p':
 			std::stringstream(optarg) >> port;
 			break;
+		case 'h':
 		default:
+			cout << "Help:" << endl;
+			cout << "\t-d\t\tShow debug message." << endl;
+			cout <<"\t-D\t\tShow more debug message." << endl;
+			cout << "\t-c [file]\tLoad host file." << endl;
+			cout << "\t-R\t\tEnable Redis cache.Default port is 127.0.0.1:6379" << endl;
+			cout << "\t-p [port]\tListening port, default is 53." << endl;
+			cout << "\t-h\t\tShow this page." << endl;
+			exit(0);
 			break;
 		}
 	}
-	server = unique_ptr<DnsServer>{ new DnsServer("127.0.0.1",port,"8.8.8.8") };
+	server = unique_ptr<DnsServer>{ new DnsServer("0.0.0.0",port,"8.8.8.8") };
 	if(!hostFilePath.empty())
 	server->loadHost(hostFilePath.c_str());
 	if (useRedis)
