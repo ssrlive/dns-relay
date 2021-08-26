@@ -3,6 +3,9 @@
 #include <condition_variable>
 #include <fstream>
 #include <sstream>
+#include <cstring>
+
+using std::memcpy;
 using std::cout;
 using std::endl;
 extern int debugLevel;
@@ -36,7 +39,7 @@ void DnsServer::start() {
 #ifdef _MSC_VER
 				memcpy_s(toSend, response.second, response.first, response.second);
 #else
-				memcpy(toSend, response.c_str(), response.size());
+				memcpy(toSend, response.first, response.second);
 #endif
 				server->trySend(event.sender, toSend, response.second);
 				delete[] toSend;

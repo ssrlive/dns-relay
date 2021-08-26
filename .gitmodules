@@ -1,0 +1,12 @@
+[submodule "depends/cpp_redis"]
+	path = depends/cpp_redis
+	url = https://github.com/cpp-redis/cpp_redis.git
+	branch = master
+[submodule "depends/uvw"]
+	path = depends/uvw
+	url = https://github.com/skypjack/uvw.git
+	branch = master
+[submodule "depends/libuv"]
+	path = depends/libuv
+	url = https://github.com/ShadowsocksR-Live/libuv.git
+	branch = v1.x

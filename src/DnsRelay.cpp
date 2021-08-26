@@ -2,7 +2,7 @@
 //
 
 #include "DnsServer.h"
-#include "DNS Relay.h"
+#include "DnsRelay.h"
 #include <signal.h>
 #include "getopt.h"
 int main(int argc, char* argv[]) {
