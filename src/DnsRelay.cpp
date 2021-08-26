@@ -8,9 +8,10 @@
 int main(int argc, char* argv[]) {
 	int ch;
 	std::string hostFilePath = "../hosts";
+	std::string bindAddr = "127.0.0.1";
 	bool useRedis = false;
 	int port = 53;//default port
-	while ((ch = getopt(argc, argv, "dDRc:p:h")) != -1){
+	while ((ch = getopt(argc, argv, "dDRb:c:p:h")) != -1){
 		switch (ch)
 		{
 		case 'd':
@@ -21,6 +22,9 @@ int main(int argc, char* argv[]) {
 			break;
 		case 'R':
 			useRedis = true;
+			break;
+		case 'b':
+			bindAddr = optarg;
 			break;
 		case 'c':
 			hostFilePath = optarg;
@@ -35,13 +39,14 @@ int main(int argc, char* argv[]) {
 			cout <<"\t-D\t\tShow more debug message." << endl;
 			cout << "\t-c [file]\tLoad host file." << endl;
 			cout << "\t-R\t\tEnable Redis cache.Default port is 127.0.0.1:6379" << endl;
+			cout << "\t-b [binding IP]\tBinding IP address, default is 127.0.0.1" << endl;
 			cout << "\t-p [port]\tListening port, default is 53." << endl;
 			cout << "\t-h\t\tShow this page." << endl;
 			exit(0);
 			break;
 		}
 	}
-	server = unique_ptr<DnsServer>{ new DnsServer("0.0.0.0",port,"8.8.8.8") };
+	server = unique_ptr<DnsServer>{ new DnsServer(bindAddr, port,"8.8.8.8") };
 	if(!hostFilePath.empty())
 	server->loadHost(hostFilePath.c_str());
 	if (useRedis)

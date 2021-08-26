@@ -2,6 +2,9 @@
 Thumbs.db 
 
 build/
+.vscode/
+.vs/
+cmake-build-*/
   
 # Ignore files build by Visual Studio
 *.obj

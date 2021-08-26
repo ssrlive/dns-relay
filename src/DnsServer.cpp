@@ -56,9 +56,9 @@ void DnsServer::start() {
 		cout << "Error occurred:" << event.what() << endl;
 		});
 	try {
-		server->bind("127.0.0.1", host.port);
+		server->bind(host.ip, host.port);
 		server->recv();
-		cout << "Start listening at 127.0.0.1:" << host.port << endl;
+		cout << "Start listening at " << host.ip << ":" << host.port << endl;
 		loop->run();
 	}
 	catch (std::exception& e) {

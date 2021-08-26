@@ -3,10 +3,12 @@
 #
 cmake_minimum_required (VERSION 3.8)
 
+project(dnsRelay)
+
 # Add source to this project's executable.
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wno-narrowing -Wno-c++98-compat -Wno-reserved-id-macro -Wno-nonportable-system-include-path -Wno-sign-conversion")
-SET(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -Zi")
-SET(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O2")
+#SET(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -Zi")
+#SET(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O2")
 # SET(EXECUTABLE_OUTPUT_PATH "${PROJECT_SOURCE_DIR}/bin")
 INCLUDE_DIRECTORIES("${PROJECT_SOURCE_DIR}/include")
 
